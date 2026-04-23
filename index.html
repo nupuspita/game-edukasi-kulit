@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ular Tangga Ekskresi Kulit</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --primary: #fbbf24;
+            --secondary: #f87171;
+            --accent: #60a5fa;
+            --skin: #ffdbac;
+        }
+        body {
+            background-color: #fef3c7;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .board {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            grid-template-rows: repeat(10, 1fr);
+            width: 100%;
+            max-width: 600px;
+            aspect-ratio: 1 / 1;
+            border: 4px solid #92400e;
+            position: relative;
+        }
+        .cell {
+            border: 1px solid rgba(146, 64, 14, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            font-weight: bold;
+            position: relative;
+        }
+        .cell:nth-child(even) { background-color: #fffbeb; }
+        .cell:nth-child(odd) { background-color: #fef3c7; }
+        
+        .player {
+            width: 25px;
+            height: 25px;
+            background-color: #ef4444;
+            border: 2px solid white;
+            border-radius: 50%;
+            position: absolute;
+            z-index: 10;
+            transition: all 0.5s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .snake-icon { color: #16a34a; font-weight: bold; }
+        .ladder-icon { color: #2563eb; font-weight: bold; }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .dice-animation {
+            animation: bounce 0.3s infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center p-4">
+
+    <!-- Kontrol Musik -->
+    <div class="fixed top-4 right-4 z-[100]">
+        <button id="music-toggle" class="bg-white p-3 rounded-full shadow-lg border-2 border-amber-500 text-2xl hover:scale-110 transition-transform">
+            🔇
+        </button>
+    </div>
+
+    <!-- Audio Element -->
+    <audio id="bg-music" loop>
+        <source src="https://github.com/nupuspita/music-background/raw/refs/heads/main/Cellular_Waltz.mp3" type="audio/mpeg">
+        Browser kamu tidak mendukung elemen audio.
+    </audio>
+
+    <div class="max-w-4xl w-full bg-white rounded-2xl shadow-2xl p-6 overflow-hidden">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl font-bold text-amber-800">Petualangan Ekskresi: Kulit</h1>
+            <p class="text-amber-600">Pelajari struktur dan fungsi kulit sambil bermain!</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- Papan Game -->
+            <div class="flex-1 flex justify-center items-center">
+                <div id="board" class="board bg-white rounded shadow-inner">
+                    <!-- Petak akan dibuat via JS -->
+                </div>
+            </div>
+
+            <!-- Panel Kontrol -->
+            <div class="w-full lg:w-80 flex flex-col gap-4">
+                <div class="bg-amber-50 p-4 rounded-xl border-2 border-amber-200 text-center">
+                    <h2 class="font-bold text-lg mb-2">Posisi Kamu</h2>
+                    <div id="pos-display" class="text-4xl font-black text-amber-600">1</div>
+                </div>
+
+                <div class="flex flex-col items-center gap-4 bg-white p-6 rounded-xl shadow-md border">
+                    <div id="dice-result" class="text-5xl mb-2">🎲</div>
+                    <button id="roll-btn" class="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg transition-colors shadow-lg active:scale-95">
+                        Kocok Dadu
+                    </button>
+                </div>
+
+                <div id="log" class="h-32 overflow-y-auto bg-gray-50 p-3 rounded border text-sm text-gray-600">
+                    Selamat datang! Klik kocok dadu untuk mulai. Musik akan diputar saat kamu berinteraksi.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Pertanyaan -->
+    <div id="quiz-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50 p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 shadow-2xl">
+            <div class="flex items-center gap-3 mb-4">
+                <span id="modal-type-icon" class="text-3xl"></span>
+                <h3 id="modal-title" class="text-xl font-bold">Tantangan Kulit!</h3>
+            </div>
+            <p id="question-text" class="text-lg text-gray-700 mb-6 font-medium"></p>
+            <div id="options-container" class="space-y-3">
+                <!-- Tombol pilihan -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Pesan -->
+    <div id="msg-modal" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-8 text-center max-w-sm">
+            <div id="msg-icon" class="text-6xl mb-4"></div>
+            <h2 id="msg-title" class="text-2xl font-bold mb-2"></h2>
+            <p id="msg-body" class="text-gray-600 mb-6"></p>
+            <button onclick="closeMsg()" class="px-6 py-2 bg-amber-500 text-white rounded-lg font-bold">Lanjut</button>
+        </div>
+    </div>
+
+    <script>
+        const boardSize = 10;
+        const totalCells = boardSize * boardSize;
+        let playerPos = 1;
+        let isMoving = false;
+        let isMusicPlaying = false;
+
+        const bgMusic = document.getElementById('bg-music');
+        const musicToggle = document.getElementById('music-toggle');
+
+        // Toggle Musik
+        musicToggle.onclick = () => {
+            if (isMusicPlaying) {
+                bgMusic.pause();
+                musicToggle.innerText = '🔇';
+            } else {
+                bgMusic.play();
+                musicToggle.innerText = '🔊';
+            }
+            isMusicPlaying = !isMusicPlaying;
+        };
+
+        // Data Ular dan Tangga (Kunci: Asal, Nilai: Tujuan)
+        const snakes = {
+            17: 7, 54: 34, 62: 19, 64: 60, 87: 24, 93: 73, 95: 75, 99: 78
+        };
+        const ladders = {
+            4: 14, 9: 31, 20: 38, 28: 84, 40: 59, 51: 67, 63: 81, 71: 91
+        };
+
+        // Bank Pertanyaan
+        const quizData = [
+            { q: "Lapisan kulit paling luar yang tersusun atas sel-sel mati disebut...", a: ["Epidermis", "Dermis", "Hipodermis", "Melanosit"], correct: 0 },
+            { q: "Kelenjar yang berfungsi mengeluarkan keringat untuk mengatur suhu tubuh adalah...", a: ["Kelenjar Minyak", "Kelenjar Keringat", "Kelenjar Pituitari", "Kelenjar Adrenalin"], correct: 1 },
+            { q: "Pigmen yang memberikan warna pada kulit dan melindungi dari sinar UV adalah...", a: ["Keratin", "Hemoglobin", "Melanin", "Dermis"], correct: 2 },
+            { q: "Lapisan kulit yang mengandung pembuluh darah, saraf, dan akar rambut adalah...", a: ["Epidermis", "Dermis", "Subkutan", "Stratum Korneum"], correct: 1 },
+            { q: "Sisa metabolisme yang dikeluarkan melalui kulit adalah...", a: ["Urine dan Air", "Feses dan Garam", "Air dan Garam Mineral", "CO2 dan Uap Air"], correct: 2 },
+            { q: "Penyakit kulit yang disebabkan oleh penyumbatan kelenjar minyak disebut...", a: ["Eksim", "Jerawat", "Kudis", "Panu"], correct: 1 },
+            { q: "Bagian kulit yang berfungsi menyimpan cadangan lemak adalah...", a: ["Dermis", "Epidermis", "Hipodermis", "Kutikula"], correct: 2 },
+            { q: "Kulit berfungsi sebagai indera peraba karena memiliki...", a: ["Pori-pori", "Ujung Saraf Penerima Rangsang", "Pori-pori Keringat", "Lapisan Lemak"], correct: 1 },
+            { q: "Salah satu fungsi kulit adalah termoregulasi, artinya...", a: ["Menyimpan air", "Mengatur suhu tubuh", "Melindungi dari kuman", "Menghasilkan vitamin D"], correct: 1 },
+            { q: "Vitamin yang dapat dibentuk di kulit dengan bantuan sinar matahari adalah...", a: ["Vitamin A", "Vitamin B", "Vitamin C", "Vitamin D"], correct: 3 }
+        ];
+
+        // Inisialisasi Papan
+        function initBoard() {
+            const boardEl = document.getElementById('board');
+            for (let i = totalCells; i >= 1; i--) {
+                let row = Math.floor((i - 1) / boardSize);
+                let displayNum;
+                
+                // Logika Boustrophedon (ular meliuk)
+                if (row % 2 === boardSize % 2) {
+                    displayNum = i;
+                } else {
+                    let startOfRow = Math.floor((i-1)/10)*10 + 1;
+                    let endOfRow = startOfRow + 9;
+                    displayNum = endOfRow - (i - startOfRow);
+                }
+
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${displayNum}`;
+                
+                let content = `<span>${displayNum}</span>`;
+                if (snakes[displayNum]) content += `<span class="snake-icon absolute bottom-0 right-1 text-xs">🐍</span>`;
+                if (ladders[displayNum]) content += `<span class="ladder-icon absolute bottom-0 right-1 text-xs">🪜</span>`;
+                
+                cell.innerHTML = content;
+                boardEl.appendChild(cell);
+            }
+            
+            const player = document.createElement('div');
+            player.id = 'player-1';
+            player.className = 'player';
+            document.body.appendChild(player);
+            updatePlayerPosition();
+        }
+
+        function updatePlayerPosition() {
+            const cell = document.getElementById(`cell-${playerPos}`);
+            const rect = cell.getBoundingClientRect();
+            const player = document.getElementById('player-1');
+            player.style.top = `${rect.top + window.scrollY + rect.height/2 - 12.5}px`;
+            player.style.left = `${rect.left + window.scrollX + rect.width/2 - 12.5}px`;
+            document.getElementById('pos-display').innerText = playerPos;
+        }
+
+        // Logika Dadu
+        document.getElementById('roll-btn').onclick = async () => {
+            if (isMoving) return;
+            
+            // Coba putar musik secara otomatis pada interaksi pertama jika belum main
+            if (!isMusicPlaying) {
+                bgMusic.play().then(() => {
+                    isMusicPlaying = true;
+                    musicToggle.innerText = '🔊';
+                }).catch(e => console.log("Autoplay dicegah oleh browser"));
+            }
+
+            isMoving = true;
+            const diceBtn = document.getElementById('roll-btn');
+            const diceDisp = document.getElementById('dice-result');
+            diceBtn.disabled = true;
+            
+            let roll;
+            for(let i=0; i<10; i++) {
+                roll = Math.floor(Math.random() * 6) + 1;
+                diceDisp.innerText = getDiceEmoji(roll);
+                await new Promise(r => setTimeout(r, 50));
+            }
+
+            addToLog(`Dadu keluar: ${roll}`);
+            
+            for(let i=0; i<roll; i++) {
+                if (playerPos < totalCells) {
+                    playerPos++;
+                    updatePlayerPosition();
+                    await new Promise(r => setTimeout(r, 200));
+                }
+            }
+
+            checkSpecialCell();
+        };
+
+        function getDiceEmoji(num) {
+            const dice = ['🎲', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+            return dice[num];
+        }
+
+        function addToLog(msg) {
+            const log = document.getElementById('log');
+            log.innerHTML = `<div>> ${msg}</div>` + log.innerHTML;
+        }
+
+        async function checkSpecialCell() {
+            if (snakes[playerPos]) {
+                showQuiz(snakes[playerPos], 'snake');
+            } else if (ladders[playerPos]) {
+                showQuiz(ladders[playerPos], 'ladder');
+            } else if (playerPos === totalCells) {
+                showMsg('🏆', 'Selamat!', 'Kamu berhasil menyelesaikan misi edukasi kulit!');
+                resetGame();
+            } else {
+                isMoving = false;
+                document.getElementById('roll-btn').disabled = false;
+            }
+        }
+
+        function showQuiz(target, type) {
+            const modal = document.getElementById('quiz-modal');
+            const qObj = quizData[Math.floor(Math.random() * quizData.length)];
+            
+            document.getElementById('modal-title').innerText = type === 'snake' ? "Waspada Ular!" : "Bonus Tangga!";
+            document.getElementById('modal-type-icon').innerText = type === 'snake' ? "🐍" : "🪜";
+            document.getElementById('question-text').innerText = qObj.q;
+            
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+            
+            qObj.a.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = "w-full p-3 text-left border-2 border-amber-100 rounded-lg hover:bg-amber-50 hover:border-amber-400 transition-all font-medium";
+                btn.innerText = `${String.fromCharCode(65+idx)}. ${opt}`;
+                btn.onclick = () => {
+                    modal.classList.add('hidden');
+                    if (idx === qObj.correct) {
+                        handleQuizResult(true, target, type);
+                    } else {
+                        handleQuizResult(false, target, type);
+                    }
+                };
+                container.appendChild(btn);
+            });
+            
+            modal.classList.remove('hidden');
+        }
+
+        async function handleQuizResult(isCorrect, target, type) {
+            if (isCorrect) {
+                if (type === 'ladder') {
+                    addToLog("Benar! Kamu naik tangga.");
+                    playerPos = target;
+                } else {
+                    addToLog("Benar! Kamu selamat dari ular.");
+                }
+            } else {
+                if (type === 'snake') {
+                    addToLog("Salah! Kamu turun digigit ular.");
+                    playerPos = target;
+                } else {
+                    addToLog("Salah! Kamu gagal naik tangga.");
+                }
+            }
+            
+            updatePlayerPosition();
+            await new Promise(r => setTimeout(r, 500));
+            
+            if (playerPos === totalCells) {
+                showMsg('🏆', 'Selamat!', 'Kamu berhasil menyelesaikan misi edukasi kulit!');
+                resetGame();
+            } else {
+                isMoving = false;
+                document.getElementById('roll-btn').disabled = false;
+            }
+        }
+
+        function showMsg(icon, title, body) {
+            document.getElementById('msg-icon').innerText = icon;
+            document.getElementById('msg-title').innerText = title;
+            document.getElementById('msg-body').innerText = body;
+            document.getElementById('msg-modal').classList.remove('hidden');
+        }
+
+        function closeMsg() {
+            document.getElementById('msg-modal').classList.add('hidden');
+        }
+
+        function resetGame() {
+            playerPos = 1;
+            updatePlayerPosition();
+            isMoving = false;
+            document.getElementById('roll-btn').disabled = false;
+            document.getElementById('log').innerHTML = "Game dimulai ulang!";
+        }
+
+        window.onload = initBoard;
+        window.onresize = updatePlayerPosition;
+    </script>
+</body>
+</html>
